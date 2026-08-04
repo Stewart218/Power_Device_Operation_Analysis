@@ -1,0 +1,20 @@
+# 数据处理
+pandas
+numpy
+openpyxl
+
+# 数据可视化
+matplotlib
+seaborn
+plotly
+
+# 数据分析
+scikit-learn
+
+# 工具
+jupyter
+notebook
+tqdm
+
+# 环境
+pyyaml
