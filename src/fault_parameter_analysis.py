@@ -2,81 +2,51 @@
 故障-运行参数关联分析
 
 Task3:
-1. 提取故障发生前3个月运行参数
-2. 对比故障设备与正常设备运行参数差异
-3. 分析故障前参数变化趋势
-4. 分析负荷率与故障发生相关性
+1. 提取故障前3个月及故障月份运行参数
+2. 基于设备自身历史状态计算参数相对变化率
+3. 绘制故障前参数异常趋势图
+4. 分析高负荷率与故障发生相关性
 
-
-输出：
-results/week2
-
-statistics / fault_parameter/
-    fault_before_3months_parameter.csv
-    fault_normal_parameter_compare.csv
-    load_fault_correlation.csv
-
-figures / fault_parameter/
-    fault_before_load_trend.png
-    fault_before_temperature_trend.png
-    fault_before_insulation_trend.png
-    fault_before_pd_trend.png
 
 """
 
-
-from pathlib import Path
-
 import pandas as pd
+import numpy as np
 import matplotlib.pyplot as plt
+from pathlib import Path
+import warnings
+
+warnings.filterwarnings("ignore")
+
 
 # ==============================
-# 中文字体配置
-# ==============================
-
-import matplotlib
-
-matplotlib.rcParams['font.sans-serif'] = [
-    'SimHei'
-]
-
-matplotlib.rcParams['axes.unicode_minus'] = False
-
-
-
-# ==================================================
 # 路径配置
-# ==================================================
+# ==============================
 
-ROOT = Path(__file__).resolve().parents[1]
-
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
 DATA_PATH = (
-    ROOT /
-    "data" /
-    "raw" /
-    "电力设备运维数据_2023-2026.xlsx"
+    PROJECT_ROOT
+    / "data"
+    / "raw"
+    / "电力设备运维数据_2023-2026.xlsx"
 )
 
 
 RESULT_PATH = (
-    ROOT /
-    "results" /
-    "week2"
+    PROJECT_ROOT
+    / "results"
+    / "week2"
 )
 
-
-STAT_PATH = RESULT_PATH / "statistics" / "fault_parameter"
-
-FIG_PATH = RESULT_PATH / "figures" / "fault_parameter"
-
+STAT_PATH = RESULT_PATH / "statistics" / "fault_parameter_analysis"
+FIG_PATH = RESULT_PATH / "figures" / "fault_parameter_analysis"
 
 
 STAT_PATH.mkdir(
     parents=True,
     exist_ok=True
 )
-
 
 FIG_PATH.mkdir(
     parents=True,
@@ -85,9 +55,23 @@ FIG_PATH.mkdir(
 
 
 
-# ==================================================
-# 运行参数分析指标
-# ==================================================
+# ==============================
+# 中文显示
+# ==============================
+
+plt.rcParams["font.sans-serif"] = [
+    "SimHei"
+]
+
+plt.rcParams[
+    "axes.unicode_minus"
+] = False
+
+
+
+# ==============================
+# 参数配置
+# ==============================
 
 PARAM_COLUMNS = [
 
@@ -112,42 +96,69 @@ PARAM_COLUMNS = [
 ]
 
 
+# 正向异常:
+# 数值升高表示风险增加
 
-# ==================================================
-# 读取数据
-# ==================================================
+POSITIVE_PARAMS = [
+
+    "月平均负荷率",
+
+    "月最大负荷率",
+
+    "环境温度（℃）",
+
+    "油温（℃）",
+
+    "绕组温度（℃）",
+
+    "介质损耗角tanδ",
+
+    "局部放电量（pC）"
+
+]
+
+
+# 反向异常:
+# 数值下降表示风险增加
+
+NEGATIVE_PARAMS = [
+
+    "绝缘电阻（MΩ）",
+
+    "SF6气体压力（MPa）"
+
+]
+
+
+
+# ==============================
+# 数据读取
+# ==============================
 
 def load_data():
 
-    print("正在读取数据...")
+    print("读取数据...")
 
 
     fault = pd.read_excel(
-
         DATA_PATH,
-
         sheet_name="故障工单"
-
     )
 
 
     parameter = pd.read_excel(
-
         DATA_PATH,
-
         sheet_name="运行参数"
-
     )
 
 
-    print(
-        "故障工单数量:",
-        len(fault)
+    fault["故障时间"] = pd.to_datetime(
+        fault["故障时间"]
     )
 
-    print(
-        "运行参数记录:",
-        len(parameter)
+
+    parameter["记录年月"] = pd.to_datetime(
+        parameter["记录年月"]
     )
 
 
@@ -156,116 +167,454 @@ def load_data():
 
 
 
-# ==================================================
-# 提取故障前三个月运行参数
-# ==================================================
+# ==============================
+# 构造故障窗口
+# ==============================
 
-def extract_before_fault(
+def build_fault_window(
         fault,
         parameter
 ):
 
 
     print(
-        "\n开始提取故障前三个月参数..."
+        "构造故障前3个月窗口..."
     )
-
-
-    fault["故障时间"] = pd.to_datetime(
-
-        fault["故障时间"]
-
-    )
-
-
-    parameter["记录年月"] = pd.to_datetime(
-
-        parameter["记录年月"]
-
-    )
-
 
 
     records = []
 
 
-
     for _, row in fault.iterrows():
 
-
-        device_id = row["设备编号"]
-
+        device = row["设备编号"]
 
         fault_time = row["故障时间"]
 
 
+        temp = parameter[
+            parameter["设备编号"]
+            ==
+            device
+        ].copy()
 
-        start_time = (
 
-            fault_time -
+        if len(temp)==0:
+            continue
 
-            pd.DateOffset(
-                months=3
+
+        temp["距离故障月份"] = (
+
+            (
+
+            temp["记录年月"].dt.year
+            -
+            fault_time.year
+
+            )
+            *
+            12
+
+            +
+
+            (
+            temp["记录年月"].dt.month
+            -
+            fault_time.month
             )
 
         )
 
 
-
-        temp = parameter[
-
-            (parameter["设备编号"] == device_id)
-
-            &
-
-            (parameter["记录年月"] >= start_time)
-
-            &
-
-            (parameter["记录年月"] < fault_time)
-
-        ].copy()
+        temp = temp[
+            temp["距离故障月份"]
+            .isin(
+                [-3,-2,-1,0]
+            )
+        ]
 
 
-
-        if len(temp) > 0:
-
-
-            temp["故障时间"] = fault_time
-
-            temp["故障设备"] = 1
+        temp["故障时间"] = fault_time
 
 
-            records.append(temp)
+        temp["故障类型"] = row["故障类型"]
+
+
+        records.append(temp)
 
 
 
-    if len(records) == 0:
+    if len(records)==0:
 
-
-        print(
-            "未匹配到故障前三个月运行参数"
+        raise ValueError(
+            "没有匹配到故障运行参数"
         )
 
 
-        return pd.DataFrame()
-
-
-
-    fault_parameter = pd.concat(
-
+    result = pd.concat(
         records,
-
         ignore_index=True
+    )
+
+
+    result.to_csv(
+
+        STAT_PATH
+        /
+        "fault_parameter_window.csv",
+
+        index=False,
+
+        encoding="utf-8-sig"
 
     )
 
 
+    return result
 
-    fault_parameter.to_csv(
 
-        STAT_PATH /
-        "fault_before_3months_parameter.csv",
+
+
+# ==============================
+# 计算相对变化率
+# ==============================
+
+
+def calculate_relative_change(
+        data
+):
+
+
+    print(
+        "计算参数相对变化率..."
+    )
+
+
+    result=[]
+
+
+    for device, group in data.groupby(
+            "设备编号"
+    ):
+
+
+        baseline_data = group[
+            group["距离故障月份"]
+            .isin(
+                [-3,-2,-1]
+            )
+        ]
+
+
+        fault_data = group[
+            group["距离故障月份"]
+            ==
+            0
+        ]
+
+
+        if len(baseline_data)==0:
+            continue
+
+
+        if len(fault_data)==0:
+            continue
+
+
+
+        baseline = (
+            baseline_data[
+                PARAM_COLUMNS
+            ]
+            .mean()
+        )
+
+
+        fault_value = (
+            fault_data[
+                PARAM_COLUMNS
+            ]
+            .mean()
+        )
+
+
+        item={
+
+            "设备编号":
+            device
+
+        }
+
+
+        for p in PARAM_COLUMNS:
+
+
+            if p in POSITIVE_PARAMS:
+
+
+                change = (
+
+                    fault_value[p]
+                    -
+                    baseline[p]
+
+                ) / baseline[p]
+
+
+            else:
+
+
+                change = (
+
+                    baseline[p]
+                    -
+                    fault_value[p]
+
+                ) / baseline[p]
+
+
+            item[
+                p+"异常变化率"
+            ] = change
+
+
+
+        result.append(item)
+
+
+
+    df = pd.DataFrame(
+        result
+    )
+
+
+    df.to_csv(
+
+        STAT_PATH
+        /
+        "fault_parameter_change_rate.csv",
+
+        index=False,
+
+        encoding="utf-8-sig"
+
+    )
+
+
+    return df
+
+
+
+
+# ==============================
+# 绘制异常趋势
+# ==============================
+
+def plot_relative_trend(
+        data
+):
+
+
+    print(
+        "绘制故障前参数异常趋势..."
+    )
+
+
+    trend=[]
+
+
+    for device, group in data.groupby(
+            "设备编号"
+    ):
+
+
+        base = (
+
+            group[
+                group["距离故障月份"]
+                .isin([-3,-2,-1])
+            ]
+
+            [PARAM_COLUMNS]
+
+            .mean()
+
+        )
+
+
+        for _, row in group.iterrows():
+
+            item={
+
+                "距离故障月份":
+                row["距离故障月份"]
+
+            }
+
+
+            for p in PARAM_COLUMNS:
+
+
+                if p in POSITIVE_PARAMS:
+
+                    value=(
+
+                        row[p]-base[p]
+
+                    )/base[p]
+
+
+                else:
+
+                    value=(
+
+                        base[p]-row[p]
+
+                    )/base[p]
+
+
+                item[p]=value
+
+
+            trend.append(item)
+
+
+
+    trend=pd.DataFrame(
+        trend
+    )
+
+
+    trend_mean=(
+
+        trend
+
+        .groupby(
+            "距离故障月份"
+        )
+
+        [PARAM_COLUMNS]
+
+        .mean()
+
+        .reindex(
+            [-3,-2,-1,0]
+        )
+
+    )
+
+
+    trend_mean.to_csv(
+
+        STAT_PATH
+        /
+        "fault_relative_trend.csv",
+
+        encoding="utf-8-sig"
+
+    )
+
+
+    for p in PARAM_COLUMNS:
+
+
+        plt.figure(
+            figsize=(8,5)
+        )
+
+
+        plt.plot(
+
+            trend_mean.index,
+
+            trend_mean[p],
+
+            marker="o"
+
+        )
+
+
+        plt.xlabel(
+            "距离故障月份"
+        )
+
+
+        plt.ylabel(
+            "相对异常变化率"
+        )
+
+
+        plt.title(
+
+            f"{p}故障前异常趋势"
+
+        )
+
+
+        plt.xticks(
+            [-3,-2,-1,0]
+        )
+
+
+        plt.grid(
+            alpha=0.3
+        )
+
+
+        plt.tight_layout()
+
+
+        plt.savefig(
+
+            FIG_PATH
+            /
+            f"{p}_fault_trend.png",
+
+            dpi=300
+
+        )
+
+
+        plt.close()
+
+
+
+
+# ==============================
+# 高负荷相关性分析
+# ==============================
+
+def load_fault_correlation(
+        change
+):
+
+
+    print(
+        "分析负荷率相关性..."
+    )
+
+
+    result=(
+
+        change
+
+        [
+            [
+            "设备编号",
+            "月平均负荷率异常变化率",
+            "月最大负荷率异常变化率"
+            ]
+
+        ]
+
+    )
+
+
+    result.to_csv(
+
+        STAT_PATH
+        /
+        "load_fault_correlation.csv",
 
         index=False,
 
@@ -275,417 +624,11 @@ def extract_before_fault(
 
 
 
-    print(
 
-        "故障前三个月参数记录:",
+# ==============================
+# 主程序
+# ==============================
 
-        len(fault_parameter)
-
-    )
-
-
-
-    return fault_parameter
-
-
-
-
-
-# ==================================================
-# 故障设备与正常设备参数比较
-# ==================================================
-
-def compare_parameter(
-        parameter,
-        fault_parameter
-):
-
-
-    print(
-        "\n开始故障设备参数对比..."
-    )
-
-
-
-    fault_devices = (
-
-        fault_parameter
-        ["设备编号"]
-        .unique()
-
-    )
-
-
-
-    parameter["是否故障设备"] = (
-
-        parameter["设备编号"]
-        .isin(fault_devices)
-
-    )
-
-
-
-    result = (
-
-        parameter
-
-        .groupby(
-            "是否故障设备"
-        )
-
-        [PARAM_COLUMNS]
-
-        .mean()
-
-    )
-
-
-
-    result.to_csv(
-
-        STAT_PATH /
-        "fault_normal_parameter_compare.csv",
-
-        encoding="utf-8-sig"
-
-    )
-
-
-
-    print(result)
-
-
-
-
-# ==================================================
-# 故障前三个月趋势分析
-# ==================================================
-
-def plot_fault_trend(
-        fault_parameter
-):
-
-
-    print(
-        "\n生成趋势图..."
-    )
-
-
-
-    trend = (
-
-        fault_parameter
-
-        .groupby(
-            "记录年月"
-        )
-
-        [PARAM_COLUMNS]
-
-        .mean()
-
-    )
-
-
-
-    # --------------------------
-    # 负荷趋势
-    # --------------------------
-
-    plt.figure(
-        figsize=(10,5)
-    )
-
-
-    plt.plot(
-
-        trend.index,
-
-        trend["月平均负荷率"],
-
-        marker="o"
-
-    )
-
-
-    plt.title(
-        "故障前三个月平均负荷率趋势"
-    )
-
-
-    plt.xlabel(
-        "时间"
-    )
-
-
-    plt.ylabel(
-        "负荷率"
-    )
-
-
-    plt.xticks(
-        rotation=45
-    )
-
-
-    plt.tight_layout()
-
-
-    plt.savefig(
-
-        FIG_PATH /
-        "fault_before_load_trend.png",
-
-        dpi=300
-
-    )
-
-
-    plt.close()
-
-
-
-    # --------------------------
-    # 温升趋势
-    # --------------------------
-
-    plt.figure(
-        figsize=(10,5)
-    )
-
-
-    plt.plot(
-
-        trend.index,
-
-        trend["油温（℃）"],
-
-        marker="o",
-
-        label="油温"
-
-    )
-
-
-    plt.plot(
-
-        trend.index,
-
-        trend["绕组温度（℃）"],
-
-        marker="o",
-
-        label="绕组温度"
-
-    )
-
-
-    plt.legend()
-
-
-    plt.title(
-        "故障前三个月温升趋势"
-    )
-
-
-    plt.xticks(
-        rotation=45
-    )
-
-
-    plt.tight_layout()
-
-
-
-    plt.savefig(
-
-        FIG_PATH /
-        "fault_before_temperature_trend.png",
-
-        dpi=300
-
-    )
-
-
-    plt.close()
-
-
-
-    # --------------------------
-    # 绝缘趋势
-    # --------------------------
-
-    plt.figure(
-        figsize=(10,5)
-    )
-
-
-    plt.plot(
-
-        trend.index,
-
-        trend["绝缘电阻（MΩ）"],
-
-        marker="o"
-
-    )
-
-
-    plt.title(
-        "故障前三个月绝缘电阻趋势"
-    )
-
-
-    plt.xticks(
-        rotation=45
-    )
-
-
-    plt.tight_layout()
-
-
-
-    plt.savefig(
-
-        FIG_PATH /
-        "fault_before_insulation_trend.png",
-
-        dpi=300
-
-    )
-
-
-    plt.close()
-
-
-
-    # --------------------------
-    # 局放趋势
-    # --------------------------
-
-    plt.figure(
-        figsize=(10,5)
-    )
-
-
-    plt.plot(
-
-        trend.index,
-
-        trend["局部放电量（pC）"],
-
-        marker="o"
-
-    )
-
-
-    plt.title(
-        "故障前三个月局部放电趋势"
-    )
-
-
-    plt.xticks(
-        rotation=45
-    )
-
-
-    plt.tight_layout()
-
-
-
-    plt.savefig(
-
-        FIG_PATH /
-        "fault_before_pd_trend.png",
-
-        dpi=300
-
-    )
-
-
-    plt.close()
-
-
-
-
-# ==================================================
-# 负荷率与故障相关性
-# ==================================================
-
-def load_fault_correlation(
-        fault,
-        parameter
-):
-
-
-    print(
-        "\n分析负荷率与故障关系..."
-    )
-
-
-
-    fault_devices = (
-
-        fault["设备编号"]
-        .unique()
-
-    )
-
-
-
-    parameter["是否故障"] = (
-
-        parameter["设备编号"]
-        .isin(fault_devices)
-
-    )
-
-
-
-    correlation = (
-
-        parameter
-
-        [
-
-        [
-
-        "月平均负荷率",
-
-        "月最大负荷率",
-
-        "是否故障"
-
-        ]
-
-        ]
-
-        .corr()
-
-    )
-
-
-
-    correlation.to_csv(
-
-        STAT_PATH /
-        "load_fault_correlation.csv",
-
-        encoding="utf-8-sig"
-
-    )
-
-
-
-    print(correlation)
-
-
-
-
-# ==================================================
-# 主函数
-# ==================================================
 
 def main():
 
@@ -693,8 +636,7 @@ def main():
     fault, parameter = load_data()
 
 
-
-    fault_parameter = extract_before_fault(
+    window = build_fault_window(
 
         fault,
 
@@ -703,52 +645,33 @@ def main():
     )
 
 
+    change = calculate_relative_change(
 
-    if fault_parameter.empty:
-
-
-        return
-
-
-
-    compare_parameter(
-
-        parameter,
-
-        fault_parameter
+        window
 
     )
 
 
+    plot_relative_trend(
 
-    plot_fault_trend(
-
-        fault_parameter
+        window
 
     )
-
 
 
     load_fault_correlation(
 
-        fault,
-
-        parameter
+        change
 
     )
-
 
 
     print(
-
-        "\n===== 故障-参数关联分析完成 ====="
-
+        "\nTask3分析完成"
     )
-
 
 
 
 if __name__ == "__main__":
-
 
     main()
