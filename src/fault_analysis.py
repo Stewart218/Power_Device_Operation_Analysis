@@ -54,9 +54,9 @@ RESULT_PATH = (
 )
 
 
-FIG_PATH = RESULT_PATH / "figures"
+FIG_PATH = RESULT_PATH / "figures" / "fault"
 
-CSV_PATH = RESULT_PATH / "statistics"
+CSV_PATH = RESULT_PATH / "statistics" / "fault"
 
 
 FIG_PATH.mkdir(

@@ -1,31 +1,35 @@
-# Python
+# Python bytecode and tooling
 __pycache__/
-*.pyc
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Virtual environments
+.venv/
+venv/
+env/
+.conda/
 
 # Jupyter
 .ipynb_checkpoints/
 
-# Environment
+# Secrets and local configuration
 .env
-.conda/
+.env.*
+!.env.example
 
-# Data
-data/raw/*.xlsx
-
-# Results temporary
+# Local source data and temporary files
+data/raw/
 *.tmp
+*.temp
+~$*
 
-
-# docs
-docs/数据字典.xlsx
-
-# results
-
-# src
-src/generate_data_dictionary.py
-src/generate_final_dictionary.py
-
-
-# IDE
+# IDE and operating-system files
 .idea/
 .vscode/
+.DS_Store
+Thumbs.db

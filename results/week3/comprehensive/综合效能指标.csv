@@ -1,0 +1,11 @@
+﻿维度,指标,数值,方向,数据来源
+巡检,巡检覆盖率(%),100.0,越高越好,inspection/csv/station_inspection_coverage.csv
+巡检,缺陷消除率(%),65.10881198715663,越高越好,inspection/csv/defect_resolution_statistics.csv
+巡检,缺陷后90天故障率(%),5.63769578379327,越低越好,inspection/csv/defect_fault_relation.csv
+检修,计划检修完成率(%),100.0,越高越好,maintenance/csv/completion_rate.csv
+检修,检修及时率(%),81.38178555406012,越高越好,maintenance/csv/timeliness_rate.csv
+检修,延期率(%),19.223867205024675,越低越好,maintenance/csv/delay_analysis.csv
+备件,库存正常率(%),25.0,越高越好,spare_parts/csv/inventory_warning.csv
+备件,采购周期正常率(%),67.85714285714286,越高越好,spare_parts/csv/procurement_cycle_analysis.csv
+成本,单台年均运维成本(万元/台年),4.063158314350797,越低越好,operation_cost/csv/benchmark_compare.csv
+成本,成本/行业基准(%),81.26316628701595,越低越好,operation_cost/csv/benchmark_compare.csv
